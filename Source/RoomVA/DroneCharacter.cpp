@@ -18,6 +18,13 @@
 #include "Engine/SkeletalMesh.h"
 #include "Animation/AnimationAsset.h"
 
+#include "Trash.h"
+#include "RoomVAGameMode.h"
+#include "Components/StaticMeshComponent.h"
+#include "Kismet/KismetSystemLibrary.h"
+#include "Kismet/GameplayStatics.h"
+#include "Engine/EngineTypes.h"
+
 ADroneCharacter::ADroneCharacter()
 {
 	PrimaryActorTick.bCanEverTick = true;
@@ -89,6 +96,10 @@ ADroneCharacter::ADroneCharacter()
 	static ConstructorHelpers::FObjectFinder<UInputAction> VertObj(
 		TEXT("/Game/Input/Actions/IA_Fly_Vertical.IA_Fly_Vertical"));
 	if (VertObj.Succeeded()) { VerticalAction = VertObj.Object; }
+
+	static ConstructorHelpers::FObjectFinder<UInputAction> AbsorbObj(
+		TEXT("/Game/Input/Actions/IA_Absorb.IA_Absorb"));
+	if (AbsorbObj.Succeeded()) { AbsorbAction = AbsorbObj.Object; }
 }
 
 void ADroneCharacter::BeginPlay()
@@ -143,6 +154,11 @@ void ADroneCharacter::Tick(float DeltaSeconds)
 	}
 
 	bVerticalInputThisFrame = false; // reset each frame
+
+	if (bAbsorbing)
+	{
+		UpdateAbsorb(DeltaSeconds);
+	}
 }
 
 void ADroneCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputComponent)
@@ -155,6 +171,75 @@ void ADroneCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputComp
 		if (LookAction)     { EIC->BindAction(LookAction, ETriggerEvent::Triggered, this, &ADroneCharacter::Look); }
 		if (MouseLookAction){ EIC->BindAction(MouseLookAction, ETriggerEvent::Triggered, this, &ADroneCharacter::Look); }
 		if (VerticalAction) { EIC->BindAction(VerticalAction, ETriggerEvent::Triggered, this, &ADroneCharacter::Vertical); }
+		if (AbsorbAction)
+		{
+			EIC->BindAction(AbsorbAction, ETriggerEvent::Started, this, &ADroneCharacter::StartAbsorb);
+			EIC->BindAction(AbsorbAction, ETriggerEvent::Completed, this, &ADroneCharacter::StopAbsorb);
+			EIC->BindAction(AbsorbAction, ETriggerEvent::Canceled, this, &ADroneCharacter::StopAbsorb);
+		}
+	}
+}
+
+void ADroneCharacter::StartAbsorb()
+{
+	bAbsorbing = true;
+}
+
+void ADroneCharacter::StopAbsorb()
+{
+	bAbsorbing = false;
+}
+
+void ADroneCharacter::UpdateAbsorb(float DeltaSeconds)
+{
+	const FVector Origin = GetActorLocation();
+	const FVector CamForward = FollowCamera ? FollowCamera->GetForwardVector()
+		: (Controller ? Controller->GetControlRotation().Vector() : GetActorForwardVector());
+
+	// Find trash within range.
+	TArray<TEnumAsByte<EObjectTypeQuery>> ObjectTypes;
+	ObjectTypes.Add(UEngineTypes::ConvertToObjectType(ECC_WorldDynamic));
+
+	TArray<AActor*> Ignore;
+	Ignore.Add(this);
+
+	TArray<AActor*> Found;
+	UKismetSystemLibrary::SphereOverlapActors(
+		this, Origin, AbsorbRange, ObjectTypes, ATrash::StaticClass(), Ignore, Found);
+
+	const float CosHalfAngle = FMath::Cos(FMath::DegreesToRadians(AbsorbConeHalfAngleDeg));
+
+	for (AActor* Actor : Found)
+	{
+		ATrash* Trash = Cast<ATrash>(Actor);
+		if (!Trash) { continue; }
+
+		const FVector ToTrash = Trash->GetActorLocation() - Origin;
+		const float Dist = ToTrash.Size();
+
+		// Within suction cone?
+		if (Dist > KINDA_SMALL_NUMBER)
+		{
+			const float Dot = FVector::DotProduct(ToTrash / Dist, CamForward);
+			if (Dot < CosHalfAngle) { continue; } // outside cone
+		}
+
+		Trash->bBeingAbsorbed = true;
+
+		if (Dist <= CollectDistance)
+		{
+			// Collect.
+			if (ARoomVAGameMode* GM = Cast<ARoomVAGameMode>(UGameplayStatics::GetGameMode(this)))
+			{
+				GM->AddCleaned(Trash->TrashValue);
+			}
+			Trash->Destroy();
+		}
+		else if (Dist > KINDA_SMALL_NUMBER)
+		{
+			// Pull via physics velocity so releasing LMB drops it back under gravity.
+			Trash->PullToward(Origin, PullSpeed);
+		}
 	}
 }
 

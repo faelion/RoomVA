@@ -52,6 +52,9 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Input")
 	UInputAction* VerticalAction;
 
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Input")
+	UInputAction* AbsorbAction;
+
 	// ---- Tuning ----
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Drone")
 	float CameraPitchMin = -85.f;
@@ -64,9 +67,31 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Drone")
 	float VerticalDampingMultiplier = 2.f;
 
+	// ---- Absorb (vacuum) ----
+	// Max distance the absorb reaches.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Absorb")
+	float AbsorbRange = 300.f;
+
+	// Half-angle of the suction cone around camera-forward (degrees). Trash outside is ignored.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Absorb")
+	float AbsorbConeHalfAngleDeg = 25.f;
+
+	// Speed (cm/s) trash flies toward the drone while being absorbed.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Absorb")
+	float PullSpeed = 300.f;
+
+	// Distance at which trash is collected and removed.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Absorb")
+	float CollectDistance = 50.f;
+
 private:
 	// True on frames where the vertical (Space/Ctrl) action fired. Drives the extra Z damping.
 	bool bVerticalInputThisFrame = false;
+
+	// True while the absorb input is held.
+	bool bAbsorbing = false;
+
+	void UpdateAbsorb(float DeltaSeconds);
 
 protected:
 
@@ -78,4 +103,6 @@ protected:
 	void Move(const FInputActionValue& Value);
 	void Look(const FInputActionValue& Value);
 	void Vertical(const FInputActionValue& Value);
+	void StartAbsorb();
+	void StopAbsorb();
 };
