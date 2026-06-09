@@ -69,6 +69,7 @@ ADroneCharacter::ADroneCharacter()
 		GetMesh()->SetSkeletalMesh(MeshObj.Object);
 		// Default offset; tweak in BP child if it sits wrong.
 		GetMesh()->SetRelativeLocationAndRotation(FVector(0.f, 0.f, -42.f), FRotator(0.f, -90.f, 0.f));
+		GetMesh()->SetRelativeScale3D(FVector(0.5f)); // half visual size
 	}
 
 	static ConstructorHelpers::FObjectFinder<UAnimationAsset> AnimObj(
