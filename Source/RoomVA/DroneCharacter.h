@@ -55,6 +55,9 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Input")
 	UInputAction* AbsorbAction;
 
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Input")
+	UInputAction* InteractAction;
+
 	// ---- Tuning ----
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Drone")
 	float CameraPitchMin = -85.f;
@@ -84,6 +87,10 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Absorb")
 	float CollectDistance = 50.f;
 
+	// How close the drone must be to an NPC to interact with it.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Interact")
+	float InteractReach = 300.f;
+
 private:
 	// True on frames where the vertical (Space/Ctrl) action fired. Drives the extra Z damping.
 	bool bVerticalInputThisFrame = false;
@@ -105,4 +112,5 @@ protected:
 	void Vertical(const FInputActionValue& Value);
 	void StartAbsorb();
 	void StopAbsorb();
+	void Interact();
 };

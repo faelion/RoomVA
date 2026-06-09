@@ -19,11 +19,13 @@
 #include "Animation/AnimationAsset.h"
 
 #include "Trash.h"
+#include "NPC.h"
 #include "RoomVAGameMode.h"
 #include "Components/StaticMeshComponent.h"
 #include "Kismet/KismetSystemLibrary.h"
 #include "Kismet/GameplayStatics.h"
 #include "Engine/EngineTypes.h"
+#include "Engine/Engine.h"
 
 ADroneCharacter::ADroneCharacter()
 {
@@ -100,6 +102,10 @@ ADroneCharacter::ADroneCharacter()
 	static ConstructorHelpers::FObjectFinder<UInputAction> AbsorbObj(
 		TEXT("/Game/Input/Actions/IA_Absorb.IA_Absorb"));
 	if (AbsorbObj.Succeeded()) { AbsorbAction = AbsorbObj.Object; }
+
+	static ConstructorHelpers::FObjectFinder<UInputAction> InteractObj(
+		TEXT("/Game/Input/Actions/IA_Interact.IA_Interact"));
+	if (InteractObj.Succeeded()) { InteractAction = InteractObj.Object; }
 }
 
 void ADroneCharacter::BeginPlay()
@@ -177,6 +183,42 @@ void ADroneCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputComp
 			EIC->BindAction(AbsorbAction, ETriggerEvent::Completed, this, &ADroneCharacter::StopAbsorb);
 			EIC->BindAction(AbsorbAction, ETriggerEvent::Canceled, this, &ADroneCharacter::StopAbsorb);
 		}
+		if (InteractAction) { EIC->BindAction(InteractAction, ETriggerEvent::Started, this, &ADroneCharacter::Interact); }
+	}
+}
+
+void ADroneCharacter::Interact()
+{
+	// Find any NPC within reach; if one is close, ask the GameMode to advance the stage.
+	TArray<AActor*> NPCs;
+	UGameplayStatics::GetAllActorsOfClass(this, ANPC::StaticClass(), NPCs);
+
+	if (GEngine)
+	{
+		GEngine->AddOnScreenDebugMessage(-1, 2.f, FColor::Magenta,
+			FString::Printf(TEXT("Interact pressed. NPCs found: %d"), NPCs.Num()));
+	}
+
+	const FVector MyLoc = GetActorLocation();
+	for (AActor* NPC : NPCs)
+	{
+		if (!NPC) { continue; }
+
+		const float D = FVector::Dist(MyLoc, NPC->GetActorLocation());
+		if (GEngine)
+		{
+			GEngine->AddOnScreenDebugMessage(-1, 2.f, FColor::Magenta,
+				FString::Printf(TEXT("NPC dist: %.0f (reach %.0f)"), D, InteractReach));
+		}
+
+		if (D <= InteractReach)
+		{
+			if (ARoomVAGameMode* GM = Cast<ARoomVAGameMode>(UGameplayStatics::GetGameMode(this)))
+			{
+				GM->TryAdvanceStage();
+			}
+			return;
+		}
 	}
 }
 
@@ -231,7 +273,7 @@ void ADroneCharacter::UpdateAbsorb(float DeltaSeconds)
 			// Collect.
 			if (ARoomVAGameMode* GM = Cast<ARoomVAGameMode>(UGameplayStatics::GetGameMode(this)))
 			{
-				GM->AddCleaned(Trash->TrashValue);
+				GM->NotifyTrashCollected(Trash->StageIndex, Trash->TrashValue);
 			}
 			Trash->Destroy();
 		}

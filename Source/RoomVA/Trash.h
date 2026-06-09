@@ -24,6 +24,10 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Trash")
 	int32 TrashValue = 1;
 
+	// Which progression stage/room this trash belongs to (set per instance).
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Trash")
+	int32 StageIndex = 1;
+
 	// True while being sucked in.
 	UPROPERTY(BlueprintReadOnly, Category = "Trash")
 	bool bBeingAbsorbed = false;
