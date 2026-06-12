@@ -58,6 +58,9 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Input")
 	UInputAction* InteractAction;
 
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Input")
+	UInputAction* SpitAction;
+
 	// ---- Tuning ----
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Drone")
 	float CameraPitchMin = -85.f;
@@ -91,12 +94,33 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Interact")
 	float InteractReach = 300.f;
 
+	// ---- Choke / spit ----
+	// Where a choked object sits, relative to the capsule (forward of the mouth).
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Choke")
+	FVector MouthOffset = FVector(60.f, 0.f, 0.f);
+
+	// Launch speed (cm/s) when spitting the held object.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Choke")
+	float SpitSpeed = 1200.f;
+
+	// Absorb is disabled for this long (seconds) after spitting, so the
+	// spat object isn't immediately sucked back in.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Choke")
+	float AbsorbCooldownAfterSpit = 0.8f;
+
 private:
 	// True on frames where the vertical (Space/Ctrl) action fired. Drives the extra Z damping.
 	bool bVerticalInputThisFrame = false;
 
 	// True while the absorb input is held.
 	bool bAbsorbing = false;
+
+	// Object currently stuck in the mouth (null = mouth free).
+	UPROPERTY()
+	class AChokeObject* MouthObject = nullptr;
+
+	// Seconds of absorb lockout remaining (set on spit, ticks down).
+	float AbsorbCooldownRemaining = 0.f;
 
 	void UpdateAbsorb(float DeltaSeconds);
 
@@ -113,4 +137,5 @@ protected:
 	void StartAbsorb();
 	void StopAbsorb();
 	void Interact();
+	void Spit();
 };

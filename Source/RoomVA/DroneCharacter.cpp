@@ -19,6 +19,7 @@
 #include "Animation/AnimationAsset.h"
 
 #include "Trash.h"
+#include "ChokeObject.h"
 #include "NPC.h"
 #include "RoomVAGameMode.h"
 #include "Components/StaticMeshComponent.h"
@@ -107,6 +108,10 @@ ADroneCharacter::ADroneCharacter()
 	static ConstructorHelpers::FObjectFinder<UInputAction> InteractObj(
 		TEXT("/Game/Input/Actions/IA_Interact.IA_Interact"));
 	if (InteractObj.Succeeded()) { InteractAction = InteractObj.Object; }
+
+	static ConstructorHelpers::FObjectFinder<UInputAction> SpitObj(
+		TEXT("/Game/Input/Actions/IA_Spit.IA_Spit"));
+	if (SpitObj.Succeeded()) { SpitAction = SpitObj.Object; }
 }
 
 void ADroneCharacter::BeginPlay()
@@ -162,7 +167,12 @@ void ADroneCharacter::Tick(float DeltaSeconds)
 
 	bVerticalInputThisFrame = false; // reset each frame
 
-	if (bAbsorbing)
+	if (AbsorbCooldownRemaining > 0.f)
+	{
+		AbsorbCooldownRemaining -= DeltaSeconds;
+	}
+
+	if (bAbsorbing && AbsorbCooldownRemaining <= 0.f)
 	{
 		UpdateAbsorb(DeltaSeconds);
 	}
@@ -185,6 +195,7 @@ void ADroneCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputComp
 			EIC->BindAction(AbsorbAction, ETriggerEvent::Canceled, this, &ADroneCharacter::StopAbsorb);
 		}
 		if (InteractAction) { EIC->BindAction(InteractAction, ETriggerEvent::Started, this, &ADroneCharacter::Interact); }
+		if (SpitAction)     { EIC->BindAction(SpitAction, ETriggerEvent::Started, this, &ADroneCharacter::Spit); }
 	}
 }
 
@@ -231,57 +242,95 @@ void ADroneCharacter::StartAbsorb()
 void ADroneCharacter::StopAbsorb()
 {
 	bAbsorbing = false;
+
+	// Mouth content falls out when the vacuum stops.
+	if (MouthObject)
+	{
+		MouthObject->Release();
+		MouthObject = nullptr;
+	}
+}
+
+void ADroneCharacter::Spit()
+{
+	if (!MouthObject) { return; }
+
+	const FVector Dir = FollowCamera ? FollowCamera->GetForwardVector()
+		: (Controller ? Controller->GetControlRotation().Vector() : GetActorForwardVector());
+
+	MouthObject->Release(Dir * SpitSpeed);
+	MouthObject = nullptr;
+	AbsorbCooldownRemaining = AbsorbCooldownAfterSpit; // don't instantly re-suck it
 }
 
 void ADroneCharacter::UpdateAbsorb(float DeltaSeconds)
 {
+	// Mouth plugged: vacuum is blocked until the object is dropped or spat.
+	if (MouthObject) { return; }
+
 	const FVector Origin = GetActorLocation();
 	const FVector CamForward = FollowCamera ? FollowCamera->GetForwardVector()
 		: (Controller ? Controller->GetControlRotation().Vector() : GetActorForwardVector());
 
-	// Find trash within range.
 	TArray<TEnumAsByte<EObjectTypeQuery>> ObjectTypes;
 	ObjectTypes.Add(UEngineTypes::ConvertToObjectType(ECC_WorldDynamic));
 
 	TArray<AActor*> Ignore;
 	Ignore.Add(this);
 
+	// One overlap for everything absorbable; filter per class below.
 	TArray<AActor*> Found;
 	UKismetSystemLibrary::SphereOverlapActors(
-		this, Origin, AbsorbRange, ObjectTypes, ATrash::StaticClass(), Ignore, Found);
+		this, Origin, AbsorbRange, ObjectTypes, AActor::StaticClass(), Ignore, Found);
 
 	const float CosHalfAngle = FMath::Cos(FMath::DegreesToRadians(AbsorbConeHalfAngleDeg));
 
 	for (AActor* Actor : Found)
 	{
 		ATrash* Trash = Cast<ATrash>(Actor);
-		if (!Trash) { continue; }
+		AChokeObject* Choke = Trash ? nullptr : Cast<AChokeObject>(Actor);
+		if (!Trash && !Choke) { continue; }
 
-		const FVector ToTrash = Trash->GetActorLocation() - Origin;
-		const float Dist = ToTrash.Size();
+		const FVector ToTarget = Actor->GetActorLocation() - Origin;
+		const float Dist = ToTarget.Size();
 
 		// Within suction cone?
 		if (Dist > KINDA_SMALL_NUMBER)
 		{
-			const float Dot = FVector::DotProduct(ToTrash / Dist, CamForward);
+			const float Dot = FVector::DotProduct(ToTarget / Dist, CamForward);
 			if (Dot < CosHalfAngle) { continue; } // outside cone
 		}
 
-		Trash->bBeingAbsorbed = true;
+		if (Trash)
+		{
+			Trash->bBeingAbsorbed = true;
 
-		if (Dist <= CollectDistance)
-		{
-			// Collect.
-			if (ARoomVAGameMode* GM = Cast<ARoomVAGameMode>(UGameplayStatics::GetGameMode(this)))
+			if (Dist <= CollectDistance)
 			{
-				GM->NotifyTrashCollected(Trash->StageIndex, Trash->TrashValue);
+				if (ARoomVAGameMode* GM = Cast<ARoomVAGameMode>(UGameplayStatics::GetGameMode(this)))
+				{
+					GM->NotifyTrashCollected(Trash->StageIndex, Trash->TrashValue);
+				}
+				Trash->Destroy();
 			}
-			Trash->Destroy();
+			else if (Dist > KINDA_SMALL_NUMBER)
+			{
+				Trash->PullToward(Origin, PullSpeed);
+			}
 		}
-		else if (Dist > KINDA_SMALL_NUMBER)
+		else // Choke object
 		{
-			// Pull via physics velocity so releasing LMB drops it back under gravity.
-			Trash->PullToward(Origin, PullSpeed);
+			if (Dist <= CollectDistance)
+			{
+				// Stuck in the mouth: attach in front of the capsule, vacuum blocked.
+				Choke->Hold(GetCapsuleComponent(), NAME_None, MouthOffset);
+				MouthObject = Choke;
+				return; // mouth now full; stop processing this frame
+			}
+			else if (Dist > KINDA_SMALL_NUMBER)
+			{
+				Choke->PullToward(Origin, PullSpeed);
+			}
 		}
 	}
 }
