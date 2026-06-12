@@ -25,6 +25,29 @@ AChokeObject::AChokeObject()
 	Tags.Add(FName("Choke"));
 }
 
+void AChokeObject::BeginPlay()
+{
+	Super::BeginPlay();
+
+	if (Collision)
+	{
+		Collision->SetNotifyRigidBodyCollision(true); // generate hit events while simulating
+		Collision->OnComponentHit.AddDynamic(this, &AChokeObject::OnHit);
+	}
+}
+
+void AChokeObject::OnHit(UPrimitiveComponent* /*HitComp*/, AActor* OtherActor,
+	UPrimitiveComponent* /*OtherComp*/, FVector /*NormalImpulse*/, const FHitResult& /*Hit*/)
+{
+	if (KeyTag.IsNone() || bHeld || !OtherActor) { return; }
+
+	if (OtherActor->ActorHasTag(KeyTag))
+	{
+		OtherActor->Destroy(); // unlock: remove the door (and any tagged blocker)
+		Destroy();             // key is consumed
+	}
+}
+
 void AChokeObject::PullToward(const FVector& Target, float Speed)
 {
 	if (!Collision || bHeld) { return; }

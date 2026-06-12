@@ -23,6 +23,12 @@ public:
 	UPROPERTY(BlueprintReadOnly, Category = "Choke")
 	bool bHeld = false;
 
+	// Key mechanic: if set, colliding with any actor that has this same tag
+	// destroys both this object and the hit actor (e.g. a locked door).
+	// Leave as None for ordinary choke objects.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Choke")
+	FName KeyTag = NAME_None;
+
 	// Physics body + what the absorb sweep detects.
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Choke")
 	USphereComponent* Collision;
@@ -39,4 +45,11 @@ public:
 
 	// Detach and re-enable physics. Optional launch velocity (spit).
 	void Release(const FVector& LaunchVelocity = FVector::ZeroVector);
+
+protected:
+	virtual void BeginPlay() override;
+
+	UFUNCTION()
+	void OnHit(UPrimitiveComponent* HitComp, AActor* OtherActor,
+		UPrimitiveComponent* OtherComp, FVector NormalImpulse, const FHitResult& Hit);
 };
