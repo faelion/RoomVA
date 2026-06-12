@@ -1,8 +1,14 @@
 #include "RoomVAGameMode.h"
 
 #include "Trash.h"
+#include "RoomVAHUD.h"
 #include "Engine/Engine.h"
 #include "Kismet/GameplayStatics.h"
+
+ARoomVAGameMode::ARoomVAGameMode()
+{
+	HUDClass = ARoomVAHUD::StaticClass();
+}
 
 void ARoomVAGameMode::BeginPlay()
 {
@@ -34,10 +40,23 @@ void ARoomVAGameMode::NotifyTrashCollected(int32 StageIndex, int32 Value)
 	{
 		*Remaining = FMath::Max(0, *Remaining - 1);
 	}
+	// (Per-collect feedback now lives on the HUD.)
+}
 
-	const int32 Left = StageRemaining.Contains(CurrentStage) ? StageRemaining[CurrentStage] : 0;
-	Screen(FString::Printf(TEXT("Cleaned: %d   |   Stage %d remaining: %d"),
-		TotalCleaned, CurrentStage, Left), FColor::Green);
+int32 ARoomVAGameMode::GetRemainingTotal() const
+{
+	int32 Total = 0;
+	for (const TPair<int32, int32>& Pair : StageRemaining)
+	{
+		Total += Pair.Value;
+	}
+	return Total;
+}
+
+int32 ARoomVAGameMode::GetRemainingForStage(int32 StageIndex) const
+{
+	const int32* Remaining = StageRemaining.Find(StageIndex);
+	return Remaining ? *Remaining : 0;
 }
 
 bool ARoomVAGameMode::IsStageCleared(int32 StageIndex) const

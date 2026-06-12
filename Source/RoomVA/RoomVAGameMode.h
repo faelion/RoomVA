@@ -19,6 +19,8 @@ class ROOMVA_API ARoomVAGameMode : public AGameModeBase
 	GENERATED_BODY()
 
 public:
+	ARoomVAGameMode();
+
 	virtual void BeginPlay() override;
 
 	// Total trash value cleaned so far.
@@ -41,6 +43,14 @@ public:
 	// True if every trash piece of the given stage has been collected.
 	UFUNCTION(BlueprintCallable, Category = "Progression")
 	bool IsStageCleared(int32 StageIndex) const;
+
+	// Trash remaining across all stages.
+	UFUNCTION(BlueprintCallable, Category = "Progression")
+	int32 GetRemainingTotal() const;
+
+	// Trash remaining in one stage.
+	UFUNCTION(BlueprintCallable, Category = "Progression")
+	int32 GetRemainingForStage(int32 StageIndex) const;
 
 private:
 	// StageIndex -> remaining trash count.
